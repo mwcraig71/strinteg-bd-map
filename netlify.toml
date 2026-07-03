@@ -1,0 +1,20 @@
+[build]
+  functions = "netlify/functions"
+  publish = "."
+
+[build.environment]
+  NODE_VERSION = "18"
+
+# Security headers
+[[headers]]
+  for = "/*"
+    [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Netlify Identity redirect — required for invite/recovery email links to work
+[[redirects]]
+  from = "/"
+  to = "/index.html"
+  status = 200

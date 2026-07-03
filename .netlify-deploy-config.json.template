@@ -1,0 +1,6 @@
+{
+  "github_token": "ghp_YOUR_TOKEN_HERE",
+  "github_owner": "YOUR_GITHUB_USERNAME",
+  "github_repo":  "strinteg-bd-map",
+  "github_branch": "main"
+}
