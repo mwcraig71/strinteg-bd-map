@@ -15,6 +15,11 @@ body{background:#e8ecf0;color:#1A1A1A}
 #login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#1C2B4A;position:fixed;inset:0;z-index:1}
 #login-screen h1{font-size:22px;font-weight:700;letter-spacing:1px;color:#fff;margin-bottom:4px}
 #login-screen p{font-size:12px;color:rgba(255,255,255,.45);margin-bottom:28px}
+#login-form{display:flex;flex-direction:column;align-items:center;gap:10px;width:280px}
+#login-form input{width:100%;padding:10px 14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;box-sizing:border-box;outline:none;letter-spacing:.3px}
+#login-form input::placeholder{color:rgba(255,255,255,.35)}
+#login-form input:focus{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.12)}
+#login-error{color:#ff7070;font-size:11px;text-align:center;display:none;max-width:260px}
 .login-btn{background:#8B3A2A;color:#fff;border:none;padding:11px 32px;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.6px;text-transform:uppercase}
 .login-btn:hover{background:#a34432}
 /* ── App shell ────────────────────────────────────── */
@@ -124,7 +129,12 @@ body{background:#e8ecf0;color:#1A1A1A}
 <div id="login-screen">
   <h1>STRINTEG BD INTELLIGENCE MAP</h1>
   <p>Internal Strategy &nbsp;&middot;&nbsp; BD Use Only</p>
-  <button class="login-btn" onclick="netlifyIdentity.open()">Log In to Continue</button>
+  <form id="login-form" onsubmit="doLogin(event)">
+  <input type="email" id="login-email" placeholder="Email" required autocomplete="email">
+  <input type="password" id="login-password" placeholder="Password" required autocomplete="current-password">
+  <button type="submit" class="login-btn" id="login-submit">Log In</button>
+  <div id="login-error"></div>
+</form>
 </div>
 
 <!-- App (shown after login) -->
@@ -134,7 +144,7 @@ body{background:#e8ecf0;color:#1A1A1A}
   <h1>STRINTEG BD INTELLIGENCE MAP</h1>
   <div class="hdr-right">
     <span id="user-name"></span>
-    <button class="logout-btn" onclick="netlifyIdentity.logout()">Log Out</button>
+    <button class="logout-btn" onclick="doLogout()">Log Out</button>
   </div>
 </div>
 <div id="leg">
@@ -242,20 +252,44 @@ function showApp(user) {
 }
 
 if (IS_NETLIFY && window.netlifyIdentity) {
-  netlifyIdentity.on('init', user => {
-    if (user) { showApp(user); }
-    // If no user, login-screen is shown by default
-  });
-  netlifyIdentity.on('login', user => {
-    showApp(user);
-    netlifyIdentity.close();
-  });
-  netlifyIdentity.on('logout', () => {
+  // Direct GoTrue auth — replaces netlify-identity-widget modal
+  async function doLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('login-email').value;
+    const pw = document.getElementById('login-password').value;
+    const btn = document.getElementById('login-submit');
+    const errEl = document.getElementById('login-error');
+    btn.textContent = 'Logging in...';
+    btn.disabled = true;
+    errEl.style.display = 'none';
+    try {
+      const resp = await fetch('/.netlify/identity/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'grant_type=password&username=' + encodeURIComponent(email) + '&password=' + encodeURIComponent(pw)
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error_description || err.msg || 'Invalid email or password');
+      }
+      const data = await resp.json();
+      showApp(data.user || { email });
+    } catch(err) {
+      errEl.textContent = err.message;
+      errEl.style.display = 'block';
+      btn.textContent = 'Log In';
+      btn.disabled = false;
+    }
+  }
+  window.doLogin = doLogin;
+
+  function doLogout() {
     currentUser = null;
     document.getElementById('app').style.display = 'none';
     document.getElementById('login-screen').style.display = 'flex';
-  });
-  netlifyIdentity.init();
+    if (document.getElementById('login-password')) document.getElementById('login-password').value = '';
+  }
+  window.doLogout = doLogout;
 } else {
   // Local file mode — skip auth
   showApp(null);
