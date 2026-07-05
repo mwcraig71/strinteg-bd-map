@@ -262,16 +262,19 @@ function showApp(user) {
 if (IS_NETLIFY && window.netlifyIdentity) {
   // Direct GoTrue auth — replaces netlify-identity-widget modal
 
-  // Handle #recovery_token= in URL (password-reset link)
+  // Handle #recovery_token= and #invite_token= in URL
   (function() {
-    const m = window.location.hash.match(/[#&]recovery_token=([^&]+)/);
-    if (m) {
-      const token = decodeURIComponent(m[1]);
+    const hash = window.location.hash;
+    const rm = hash.match(/[#&]recovery_token=([^&]+)/);
+    const im = hash.match(/[#&]invite_token=([^&]+)/);
+    const token = rm ? decodeURIComponent(rm[1]) : (im ? decodeURIComponent(im[1]) : null);
+    if (token) {
       const lf = document.getElementById('login-form');
       const rf = document.getElementById('recovery-form');
       if (lf) lf.style.display = 'none';
       if (rf) rf.style.display = 'flex';
       window._recoveryToken = token;
+      window._isInviteToken = !!im;
       history.replaceState(null, '', window.location.pathname);
     }
   })();
@@ -285,21 +288,34 @@ if (IS_NETLIFY && window.netlifyIdentity) {
     if (pw !== pw2) { errEl.textContent = 'Passwords do not match'; errEl.style.display = 'block'; return; }
     btn.textContent = 'Setting password...'; btn.disabled = true; errEl.style.display = 'none';
     try {
-      const vr = await fetch('/.netlify/identity/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'grant_type=recovery&token=' + encodeURIComponent(window._recoveryToken)
-      });
-      if (!vr.ok) { const e2 = await vr.json().catch(()=>({})); throw new Error(e2.error_description || e2.msg || 'Invalid or expired recovery link'); }
-      const vd = await vr.json();
-      const at = vd.access_token;
-      const ur = await fetch('/.netlify/identity/user', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + at },
-        body: JSON.stringify({ password: pw })
-      });
-      if (!ur.ok) { const e3 = await ur.json().catch(()=>({})); throw new Error(e3.error_description || e3.msg || 'Failed to set password'); }
-      const ud = await ur.json();
+      let ud;
+      if (window._isInviteToken) {
+        // Invite flow: single PUT /user with token + password, no prior auth needed
+        const ir = await fetch('/.netlify/identity/user', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: window._recoveryToken, password: pw })
+        });
+        if (!ir.ok) { const e2 = await ir.json().catch(()=>({})); throw new Error(e2.error_description || e2.msg || 'Invalid or expired invite link'); }
+        ud = await ir.json();
+      } else {
+        // Recovery flow: exchange token for access_token, then update password
+        const vr = await fetch('/.netlify/identity/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'grant_type=recovery&token=' + encodeURIComponent(window._recoveryToken)
+        });
+        if (!vr.ok) { const e2 = await vr.json().catch(()=>({})); throw new Error(e2.error_description || e2.msg || 'Invalid or expired recovery link'); }
+        const vd = await vr.json();
+        const at = vd.access_token;
+        const ur = await fetch('/.netlify/identity/user', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + at },
+          body: JSON.stringify({ password: pw })
+        });
+        if (!ur.ok) { const e3 = await ur.json().catch(()=>({})); throw new Error(e3.error_description || e3.msg || 'Failed to set password'); }
+        ud = await ur.json();
+      }
       showApp(ud);
     } catch(err) {
       errEl.textContent = err.message; errEl.style.display = 'block';
