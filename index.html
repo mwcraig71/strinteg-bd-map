@@ -6,6 +6,20 @@
 <title>Strinteg BD Intelligence Map</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script>
+/* Surface any uncaught script error (including syntax errors in the main
+   script block) in the login-error div so failures are never silent. */
+window.addEventListener('error', function (ev) {
+  try {
+    var el = document.getElementById('login-error');
+    if (el) {
+      el.textContent = 'Page script error: ' + (ev.message || 'unknown error') +
+        (ev.lineno ? ' (line ' + ev.lineno + ')' : '');
+      el.style.display = 'block';
+    }
+  } catch (_) {}
+});
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
 html,body{height:100%;overflow:hidden}
@@ -249,29 +263,49 @@ function showApp(user) {
   drawMap();
 }
 
-// Simple password auth — SHA-1 of "StrintegBD"
+// Simple password auth — SHA-1 of "StrintegBD", with a synchronous
+// base64 fallback for environments where crypto.subtle is unavailable
+// (non-secure contexts, older browsers). Low-stakes shared team access.
 const SITE_PW_HASH = 'f50079cfea95fb87de7b698b54290a3741e5105b';
+const SITE_PW_B64  = 'U3RyaW50ZWdCRA==';
 
 async function doLogin(e) {
-  e.preventDefault();
-  const pw = document.getElementById('login-password').value;
+  if (e && e.preventDefault) e.preventDefault();
+  // Guard against double-fire (inline onsubmit + addEventListener backup)
+  if (e && e._loginHandled) return false;
+  if (e) e._loginHandled = true;
+
+  const pw    = document.getElementById('login-password').value;
   const errEl = document.getElementById('login-error');
+  const fail  = msg => { errEl.textContent = msg; errEl.style.display = 'block'; };
+
   try {
-    const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(pw));
-    const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-    if (hex === SITE_PW_HASH) {
+    let ok = false;
+    if (window.crypto && crypto.subtle && typeof crypto.subtle.digest === 'function') {
+      try {
+        const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(pw));
+        const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+        ok = (hex === SITE_PW_HASH);
+      } catch (cryptoErr) {
+        ok = (btoa(pw) === SITE_PW_B64);   // crypto.subtle exists but failed
+      }
+    } else {
+      ok = (btoa(pw) === SITE_PW_B64);     // crypto.subtle unavailable
+    }
+    if (ok) {
       errEl.style.display = 'none';
       showApp({ email: 'team@strinteg.com' });
     } else {
-      errEl.textContent = 'Incorrect password';
-      errEl.style.display = 'block';
+      fail('Incorrect password');
     }
-  } catch(err) {
-    errEl.textContent = 'Login error: ' + err.message;
-    errEl.style.display = 'block';
+  } catch (err) {
+    fail('Login error: ' + ((err && err.message) || String(err)));
   }
+  return false;
 }
 window.doLogin = doLogin;
+// Backup wiring in case the inline onsubmit attribute is ever stripped
+document.getElementById('login-form').addEventListener('submit', doLogin);
 
 function doLogout() {
   currentUser = null;
@@ -509,4 +543,11 @@ function drawMap(){
       .attr('font-size','7').attr('font-family','Arial').attr('font-weight','700')
       .attr('fill','rgba(255,255,255,0.85)').attr('pointer-events','none')
       .text(d=>{const a=FIPS[d.id]||'';return['RI','CT','DE','DC','NJ','NH','VT','MA','MD'].includes(a)?'':a;});
-    svgEl.append('path').datum(to
+    svgEl.append('path').datum(topojson.mesh(us,us.objects.states,(a,b)=>a!==b))
+      .attr('fill','none').attr('stroke','#fff').attr('stroke-width','0.4').attr('d',path);
+  });
+}
+window.addEventListener('resize',()=>{clearTimeout(_rt);_rt=setTimeout(drawMap,150);});
+</script>
+</body>
+</html>
