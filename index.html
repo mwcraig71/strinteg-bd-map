@@ -285,10 +285,10 @@ if (IS_NETLIFY && window.netlifyIdentity) {
     if (pw !== pw2) { errEl.textContent = 'Passwords do not match'; errEl.style.display = 'block'; return; }
     btn.textContent = 'Setting password...'; btn.disabled = true; errEl.style.display = 'none';
     try {
-      const vr = await fetch('/.netlify/identity/verify', {
+      const vr = await fetch('/.netlify/identity/token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'recovery', token: window._recoveryToken })
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'grant_type=recovery&token=' + encodeURIComponent(window._recoveryToken)
       });
       if (!vr.ok) { const e2 = await vr.json().catch(()=>({})); throw new Error(e2.error_description || e2.msg || 'Invalid or expired recovery link'); }
       const vd = await vr.json();
