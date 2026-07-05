@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Strinteg BD Intelligence Map</title>
-<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
 <style>
@@ -127,22 +126,13 @@ body{background:#e8ecf0;color:#1A1A1A}
 
 <!-- Login screen -->
 <div id="login-screen">
-  <h1>STRINTEG BD INTELLIGENCE MAP</h1>
-  <p>Internal Strategy &nbsp;&middot;&nbsp; BD Use Only</p>
+  <h1>STRINTEG</h1>
+  <p>BD Intelligence Map — Authorized Access Only</p>
   <form id="login-form" onsubmit="doLogin(event)">
-  <input type="email" id="login-email" placeholder="Email" required autocomplete="email">
-  <input type="password" id="login-password" placeholder="Password" required autocomplete="current-password">
-  <button type="submit" class="login-btn" id="login-submit">Log In</button>
-  <div id="login-error"></div>
-</form>
-<!-- Set-Password form (shown when #recovery_token= is in URL) -->
-<form id="recovery-form" style="display:none;flex-direction:column;align-items:center;gap:10px;width:280px" onsubmit="doSetPassword(event)">
-  <p style="font-size:13px;color:rgba(255,255,255,.7);margin:0 0 4px 0">Set Your Password</p>
-  <input type="password" id="new-password" placeholder="New Password" required minlength="8" autocomplete="new-password" style="width:100%;padding:10px 14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;box-sizing:border-box;outline:none">
-  <input type="password" id="confirm-password" placeholder="Confirm Password" required autocomplete="new-password" style="width:100%;padding:10px 14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;box-sizing:border-box;outline:none">
-  <button type="submit" class="login-btn" id="recovery-submit">Set Password</button>
-  <div id="recovery-error" style="color:#ff7070;font-size:11px;text-align:center;display:none;max-width:260px"></div>
-</form>
+    <input type="password" id="login-password" placeholder="Password" required autocomplete="current-password">
+    <button type="submit" class="login-btn" id="login-submit">Enter</button>
+    <div id="login-error"></div>
+  </form>
 </div>
 
 <!-- App (shown after login) -->
@@ -259,123 +249,31 @@ function showApp(user) {
   drawMap();
 }
 
-if (IS_NETLIFY && window.netlifyIdentity) {
-  // Direct GoTrue auth — replaces netlify-identity-widget modal
+// Simple password auth — SHA-1 of "StrintegBD"
+const SITE_PW_HASH = '7c4de5a57c5e8e573ec3957c5e3bb32b9c2e4459';
 
-  // Handle ALL GoTrue email-link hash patterns
-  (function() {
-    const hash = window.location.hash;
-    const params = new URLSearchParams(hash.replace(/^#/, ''));
-    const accessToken  = params.get('access_token');
-    const tokenType    = params.get('type'); // 'recovery' or 'invite' or 'signup'
-    const recoveryTok  = params.get('recovery_token');
-    const inviteTok    = params.get('invite_token');
-
-    const needsSetPassword = accessToken || recoveryTok || inviteTok;
-    if (needsSetPassword) {
-      document.getElementById('login-form').style.display  = 'none';
-      document.getElementById('recovery-form').style.display = 'flex';
-      // Store whichever token we have
-      window._accessToken   = accessToken   || null;
-      window._recoveryToken = recoveryTok   || null;
-      window._inviteToken   = inviteTok     || null;
-      history.replaceState(null, '', window.location.pathname);
-    }
-  })();
-
-  async function doSetPassword(e) {
-    e.preventDefault();
-    const pw  = document.getElementById('new-password').value;
-    const pw2 = document.getElementById('confirm-password').value;
-    const btn   = document.getElementById('recovery-submit');
-    const errEl = document.getElementById('recovery-error');
-    if (pw !== pw2) { errEl.textContent = 'Passwords do not match'; errEl.style.display = 'block'; return; }
-    btn.textContent = 'Setting password...'; btn.disabled = true; errEl.style.display = 'none';
-    try {
-      let at = window._accessToken; // may already be a valid JWT from the redirect
-
-      if (!at && window._recoveryToken) {
-        // Exchange raw recovery token
-        const vr = await fetch('/.netlify/identity/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'grant_type=recovery&token=' + encodeURIComponent(window._recoveryToken)
-        });
-        if (!vr.ok) { const e2 = await vr.json().catch(()=>({})); throw new Error(e2.error_description || e2.msg || 'Recovery link invalid or expired'); }
-        at = (await vr.json()).access_token;
-      }
-
-      if (at) {
-        // Use access_token to update password
-        const ur = await fetch('/.netlify/identity/user', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + at },
-          body: JSON.stringify({ password: pw })
-        });
-        if (!ur.ok) { const e3 = await ur.json().catch(()=>({})); throw new Error(e3.error_description || e3.msg || 'Failed to set password'); }
-        showApp(await ur.json());
-
-      } else if (window._inviteToken) {
-        // Invite token: PUT /user with token + password (no prior auth)
-        const ir = await fetch('/.netlify/identity/user', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: window._inviteToken, password: pw })
-        });
-        if (!ir.ok) { const e4 = await ir.json().catch(()=>({})); throw new Error(e4.error_description || e4.msg || 'Invite link invalid or expired'); }
-        showApp(await ir.json());
-
-      } else {
-        throw new Error('No valid token found. Please request a new password reset link.');
-      }
-    } catch(err) {
-      errEl.textContent = err.message; errEl.style.display = 'block';
-      btn.textContent = 'Set Password'; btn.disabled = false;
-    }
+async function doLogin(e) {
+  e.preventDefault();
+  const pw = document.getElementById('login-password').value;
+  const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(pw));
+  const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  if (hex === SITE_PW_HASH) {
+    showApp({ email: 'team@strinteg.com' });
+  } else {
+    const e2 = document.getElementById('login-error');
+    e2.textContent = 'Incorrect password';
+    e2.style.display = 'block';
   }
-  window.doSetPassword = doSetPassword;
-
-  async function doLogin(e) {
-    e.preventDefault();
-    const email = document.getElementById('login-email').value;
-    const pw = document.getElementById('login-password').value;
-    const btn = document.getElementById('login-submit');
-    const errEl = document.getElementById('login-error');
-    btn.textContent = 'Logging in...';
-    btn.disabled = true;
-    errEl.style.display = 'none';
-    try {
-      const resp = await fetch('/.netlify/identity/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'grant_type=password&username=' + encodeURIComponent(email) + '&password=' + encodeURIComponent(pw)
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.error_description || err.msg || 'Invalid email or password');
-      }
-      const data = await resp.json();
-      showApp(data.user || { email });
-    } catch(err) {
-      errEl.textContent = err.message;
-      errEl.style.display = 'block';
-      btn.textContent = 'Log In';
-      btn.disabled = false;
-    }
-  }
-  window.doLogin = doLogin;
-
-  function doLogout() {
-    currentUser = null;
-    document.getElementById('app').style.display = 'none';
-    document.getElementById('login-screen').style.display = 'flex';
-    if (document.getElementById('login-password')) document.getElementById('login-password').value = '';
-  }
-  window.doLogout = doLogout;
-} else {
-  // Local file mode — skip auth
-  showApp(null);
 }
+window.doLogin = doLogin;
+
+function doLogout() {
+  currentUser = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-password').value = '';
+}
+window.doLogout = doLogout;
 
 // ── Team Notes ────────────────────────────────────────────────────────────────
 function renderTeamNotes(key) {
