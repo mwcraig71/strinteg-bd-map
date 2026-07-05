@@ -255,14 +255,20 @@ const SITE_PW_HASH = 'f50079cfea95fb87de7b698b54290a3741e5105b';
 async function doLogin(e) {
   e.preventDefault();
   const pw = document.getElementById('login-password').value;
-  const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(pw));
-  const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-  if (hex === SITE_PW_HASH) {
-    showApp({ email: 'team@strinteg.com' });
-  } else {
-    const e2 = document.getElementById('login-error');
-    e2.textContent = 'Incorrect password';
-    e2.style.display = 'block';
+  const errEl = document.getElementById('login-error');
+  try {
+    const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(pw));
+    const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+    if (hex === SITE_PW_HASH) {
+      errEl.style.display = 'none';
+      showApp({ email: 'team@strinteg.com' });
+    } else {
+      errEl.textContent = 'Incorrect password';
+      errEl.style.display = 'block';
+    }
+  } catch(err) {
+    errEl.textContent = 'Login error: ' + err.message;
+    errEl.style.display = 'block';
   }
 }
 window.doLogin = doLogin;
@@ -503,8 +509,4 @@ function drawMap(){
       .attr('font-size','7').attr('font-family','Arial').attr('font-weight','700')
       .attr('fill','rgba(255,255,255,0.85)').attr('pointer-events','none')
       .text(d=>{const a=FIPS[d.id]||'';return['RI','CT','DE','DC','NJ','NH','VT','MA','MD'].includes(a)?'':a;});
-    svgEl.append('path').datum(topojson.mesh(us,us.objects.states,(a,b)=>a!==b))
-      .attr('fill','none').attr('stroke','#fff').attr('stroke-width','0.4').attr('d',path);
-  });
-}
-window.addEventListener('resiz
+    svgEl.append('path').datum(to
