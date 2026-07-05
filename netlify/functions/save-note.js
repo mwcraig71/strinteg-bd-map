@@ -1,10 +1,8 @@
 /**
  * Netlify Function: save-note
- * Receives a team note submission from an authenticated user
- * and appends it to the corresponding Notion page.
+ * Receives a team note and appends it to the corresponding Notion page.
  *
  * POST /.netlify/functions/save-note
- * Headers: Authorization: Bearer <netlify-identity-jwt>
  * Body: { pageId, stateKey, note, displayName }
  */
 
@@ -13,13 +11,6 @@ exports.handler = async (event, context) => {
 
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method Not Allowed' }) };
-  }
-
-  // Netlify Identity automatically validates the JWT and populates clientContext.user
-  // when the request includes Authorization: Bearer <token>
-  const { user } = context.clientContext || {};
-  if (!user) {
-    return { statusCode: 401, headers, body: JSON.stringify({ error: 'Login required.' }) };
   }
 
   let body;
@@ -45,7 +36,7 @@ exports.handler = async (event, context) => {
     ? `${raw.slice(0,8)}-${raw.slice(8,12)}-${raw.slice(12,16)}-${raw.slice(16,20)}-${raw.slice(20)}`
     : pageId;
 
-  const userName = displayName || user.email || 'Team Member';
+  const userName = displayName || 'Team Member';
   const dateStr = new Date().toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric'
   });
