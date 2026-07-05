@@ -346,7 +346,9 @@ async function submitTeamNote() {
       },
       body: JSON.stringify({ pageId, stateKey: curKey, note, displayName: userName })
     });
-    const data = await res.json();
+    const rawText = await res.text();
+    let data;
+    try { data = JSON.parse(rawText); } catch(e) { throw new Error(`HTTP ${res.status} non-JSON: ${rawText.slice(0,200)}`); }
     if (res.ok && data.success) {
       if (!sessionNotes[curKey]) sessionNotes[curKey] = [];
       sessionNotes[curKey].push(data.noteText);
@@ -356,7 +358,7 @@ async function submitTeamNote() {
       status.className = 'tn-status ok';
       setTimeout(() => { status.textContent=''; status.className='tn-status'; }, 4000);
     } else {
-      throw new Error(data.error || 'Unknown error');
+      throw new Error(data.error || `HTTP ${res.status}: ${rawText.slice(0,200)}`);
     }
   } catch(err) {
     status.textContent = '⚠ ' + err.message;
@@ -505,7 +507,4 @@ function drawMap(){
       .attr('fill','none').attr('stroke','#fff').attr('stroke-width','0.4').attr('d',path);
   });
 }
-window.addEventListener('resize',()=>{clearTimeout(_rt);_rt=setTimeout(drawMap,150);});
-</script>
-</body>
-</html>                                                                                          
+window.addEventListener('resiz
