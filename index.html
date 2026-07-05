@@ -135,6 +135,14 @@ body{background:#e8ecf0;color:#1A1A1A}
   <button type="submit" class="login-btn" id="login-submit">Log In</button>
   <div id="login-error"></div>
 </form>
+<!-- Set-Password form (shown when #recovery_token= is in URL) -->
+<form id="recovery-form" style="display:none;flex-direction:column;align-items:center;gap:10px;width:280px" onsubmit="doSetPassword(event)">
+  <p style="font-size:13px;color:rgba(255,255,255,.7);margin:0 0 4px 0">Set Your Password</p>
+  <input type="password" id="new-password" placeholder="New Password" required minlength="8" autocomplete="new-password" style="width:100%;padding:10px 14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;box-sizing:border-box;outline:none">
+  <input type="password" id="confirm-password" placeholder="Confirm Password" required autocomplete="new-password" style="width:100%;padding:10px 14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;box-sizing:border-box;outline:none">
+  <button type="submit" class="login-btn" id="recovery-submit">Set Password</button>
+  <div id="recovery-error" style="color:#ff7070;font-size:11px;text-align:center;display:none;max-width:260px"></div>
+</form>
 </div>
 
 <!-- App (shown after login) -->
@@ -253,6 +261,53 @@ function showApp(user) {
 
 if (IS_NETLIFY && window.netlifyIdentity) {
   // Direct GoTrue auth — replaces netlify-identity-widget modal
+
+  // Handle #recovery_token= in URL (password-reset link)
+  (function() {
+    const m = window.location.hash.match(/[#&]recovery_token=([^&]+)/);
+    if (m) {
+      const token = decodeURIComponent(m[1]);
+      const lf = document.getElementById('login-form');
+      const rf = document.getElementById('recovery-form');
+      if (lf) lf.style.display = 'none';
+      if (rf) rf.style.display = 'flex';
+      window._recoveryToken = token;
+      history.replaceState(null, '', window.location.pathname);
+    }
+  })();
+
+  async function doSetPassword(e) {
+    e.preventDefault();
+    const pw  = document.getElementById('new-password').value;
+    const pw2 = document.getElementById('confirm-password').value;
+    const btn   = document.getElementById('recovery-submit');
+    const errEl = document.getElementById('recovery-error');
+    if (pw !== pw2) { errEl.textContent = 'Passwords do not match'; errEl.style.display = 'block'; return; }
+    btn.textContent = 'Setting password...'; btn.disabled = true; errEl.style.display = 'none';
+    try {
+      const vr = await fetch('/.netlify/identity/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'recovery', token: window._recoveryToken })
+      });
+      if (!vr.ok) { const e2 = await vr.json().catch(()=>({})); throw new Error(e2.error_description || e2.msg || 'Invalid or expired recovery link'); }
+      const vd = await vr.json();
+      const at = vd.access_token;
+      const ur = await fetch('/.netlify/identity/user', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + at },
+        body: JSON.stringify({ password: pw })
+      });
+      if (!ur.ok) { const e3 = await ur.json().catch(()=>({})); throw new Error(e3.error_description || e3.msg || 'Failed to set password'); }
+      const ud = await ur.json();
+      showApp(ud);
+    } catch(err) {
+      errEl.textContent = err.message; errEl.style.display = 'block';
+      btn.textContent = 'Set Password'; btn.disabled = false;
+    }
+  }
+  window.doSetPassword = doSetPassword;
+
   async function doLogin(e) {
     e.preventDefault();
     const email = document.getElementById('login-email').value;
