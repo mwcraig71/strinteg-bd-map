@@ -72,4 +72,6 @@ exports.handler = async (event, context) => {
     return { statusCode: 200, headers, body: JSON.stringify({ success: true, noteText }) };
   } catch (err) {
     console.error('Function error:', err);
-    return { statusCode: 500, header
+    return { statusCode: 500, headers, body: JSON.stringify({ error: `Function error: ${err.message || String(err)}` }) };
+  }
+};
