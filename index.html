@@ -132,6 +132,24 @@ body{background:#e8ecf0;color:#1A1A1A}
 .tn-status{font-size:10px;color:#555}
 .tn-status.ok{color:#2D5A3D;font-weight:700}
 .tn-status.err{color:#8B3A2A;font-weight:700}
+.du-wrap{border:1px solid #e0e4ea;border-radius:2px;overflow:hidden;margin-bottom:4px}
+.du-hdr{background:#1F4E79;color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 10px;display:flex;align-items:center;justify-content:space-between}
+.du-hdr span.du-hint{font-size:9px;font-weight:400;color:rgba(255,255,255,.6);font-style:italic;text-transform:none;letter-spacing:0}
+.du-body{padding:8px 12px;background:#f7fafd}
+.du-row{display:flex;gap:6px;margin-bottom:5px;flex-wrap:wrap}
+.du-row select,.du-row input[type=file]{font-size:11px;font-family:Arial;border:1px solid #ccc;padding:5px;color:#1A1A1A;background:#fff}
+.du-row select{flex:0 0 auto}
+.du-row input[type=file]{flex:1 1 180px;min-width:0}
+.du-body textarea{width:100%;min-height:40px;border:1px solid #ccc;padding:7px;font-size:11px;font-family:Arial;resize:vertical;color:#1A1A1A}
+.du-body textarea:focus,.du-row select:focus{outline:2px solid #1F4E79;border-color:#1F4E79}
+.du-actions{display:flex;align-items:center;gap:8px;margin-top:5px}
+.du-submit{background:#1F4E79;color:#fff;border:none;padding:6px 14px;font-size:10px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.3px}
+.du-submit:hover{background:#2c6ba5}
+.du-submit:disabled{background:#aaa;cursor:default}
+.du-status{font-size:10px;color:#555}
+.du-status.ok{color:#1F4E79;font-weight:700}
+.du-status.err{color:#8B3A2A;font-weight:700}
+.du-note{font-size:10px;color:#777;font-style:italic;margin-top:6px;line-height:1.45}
 .urgent-badge{background:#8B3A2A;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;margin-left:8px}
 .uwi-badge{background:#1F5F6E;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;margin-left:5px}
 /* District breakdown table */
@@ -266,6 +284,39 @@ body{background:#e8ecf0;color:#1A1A1A}
           </div>
         </div>
       </div>
+
+      <div class="du-wrap">
+        <div class="du-hdr">
+          <span>&#128206; UPLOAD DOCUMENT</span>
+          <span class="du-hint" id="du-hint"></span>
+        </div>
+        <div class="du-body">
+          <div class="du-row">
+            <select id="du-type">
+              <option value="RFP">RFP / Advertisement</option>
+              <option value="PNA">PNA / Pre-advertisement</option>
+              <option value="Addendum">Addendum</option>
+              <option value="Award/Selection">Award / Selection notice</option>
+              <option value="Shortlist">Shortlist</option>
+              <option value="Scoring">Scoring sheet / debrief</option>
+              <option value="Other">Other</option>
+            </select>
+            <input type="file" id="du-file"
+                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt">
+          </div>
+          <textarea id="du-note" placeholder="Optional — what should the morning run know about this? (e.g. 'addendum moved the due date')"></textarea>
+          <div class="du-actions">
+            <button class="du-submit" id="du-submit" onclick="uploadDocument()">Upload</button>
+            <span class="du-status" id="du-status"></span>
+          </div>
+          <div class="du-note">
+            Goes to this state's Notion page. The 4:45 AM research run reviews it, updates
+            the record, and files it under <code>RFPs/&lt;State&gt;/</code>. Facts are applied
+            automatically; judgment calls are staged for Michael. Max 4&nbsp;MB &mdash; drop
+            anything larger straight into the OneDrive research folder.
+          </div>
+        </div>
+      </div>
       </div><!-- /pane-notes -->
     </div>
   </div>
@@ -388,6 +439,7 @@ function renderTeamNotes(key) {
   document.getElementById('tn-input').value = '';
   document.getElementById('tn-status').textContent = '';
   document.getElementById('tn-status').className = 'tn-status';
+  resetUploadForm();
   const btn = document.getElementById('tn-submit');
   btn.disabled = false;
   btn.textContent = 'Submit Note';
@@ -454,6 +506,94 @@ async function submitTeamNote() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Submit Note';
+  }
+}
+
+// ── Document Upload ───────────────────────────────────────────────────────────
+// Mirrors submitTeamNote(): same Identity gate, same Notion page target.
+// The file is attached to the state's Notion page and flagged with a [DOC]
+// marker callout that the 4:45 AM research run scans for.
+const DU_MAX_BYTES = 4 * 1024 * 1024; // Netlify sync payload cap is ~6MB; base64 adds ~33%
+
+function resetUploadForm() {
+  const f = document.getElementById('du-file');
+  const n = document.getElementById('du-note');
+  const s = document.getElementById('du-status');
+  const h = document.getElementById('du-hint');
+  if (f) f.value = '';
+  if (n) n.value = '';
+  if (s) { s.textContent = ''; s.className = 'du-status'; }
+  if (h) h.textContent = (!IS_NETLIFY || !currentUser) ? 'sign in to upload' : '';
+}
+
+async function uploadDocument() {
+  const btn    = document.getElementById('du-submit');
+  const status = document.getElementById('du-status');
+  const input  = document.getElementById('du-file');
+
+  const setErr = (msg) => { status.textContent = '⚠ ' + msg; status.className = 'du-status err'; };
+
+  if (!IS_NETLIFY || !currentUser) {
+    return setErr('Sign in to upload. Documents go to Notion, which needs an authenticated session.');
+  }
+  const file = input.files && input.files[0];
+  if (!file) return setErr('Choose a file first.');
+  if (!file.size) return setErr('That file is empty.');
+  if (file.size > DU_MAX_BYTES) {
+    return setErr(`${(file.size / 1048576).toFixed(1)}MB exceeds the 4MB limit — put it in the OneDrive research folder instead.`);
+  }
+
+  const pageId = getPageId((NOTION[curKey] || {}).url);
+  if (!pageId) return setErr('No Notion page linked for this state.');
+
+  btn.disabled = true;
+  btn.textContent = 'Uploading…';
+  status.textContent = '';
+  status.className = 'du-status';
+
+  try {
+    const fileB64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onerror = () => reject(new Error('Could not read that file.'));
+      r.onload  = () => {
+        const s = String(r.result);
+        const i = s.indexOf(',');
+        resolve(i >= 0 ? s.slice(i + 1) : s); // strip the data: prefix
+      };
+      r.readAsDataURL(file);
+    });
+
+    const res = await fetch('/.netlify/functions/save-document', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pageId,
+        stateKey: curKey,
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        fileB64,
+        docType: document.getElementById('du-type').value,
+        note: document.getElementById('du-note').value.trim(),
+        displayName: currentUser.user_metadata?.full_name || currentUser.email || 'Team Member',
+      }),
+    });
+
+    const raw = await res.text();
+    let data;
+    try { data = JSON.parse(raw); }
+    catch { throw new Error(`HTTP ${res.status} non-JSON: ${raw.slice(0, 200)}`); }
+
+    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}: ${raw.slice(0, 200)}`);
+
+    input.value = '';
+    document.getElementById('du-note').value = '';
+    status.textContent = `✓ ${data.fileName} uploaded — the 4:45 AM run will review it`;
+    status.className = 'du-status ok';
+  } catch (err) {
+    setErr(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Upload';
   }
 }
 
